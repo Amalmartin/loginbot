@@ -92,8 +92,8 @@ const { BotFrameworkAdapter } = require('botbuilder');
 
 // Create adapter
 const adapter = new BotFrameworkAdapter({
-    appId: '5a60cea2-3665-46bd-905c-d3cd8cc2a7e8',
-    appPassword: 'Qvv8Q~Iqim9B7mbSD3m3kV77HZA26dKSr~wbRbWj'
+    appId: process.env.MicrosoftAppId,
+    appPassword: process.env.MicrosoftAppPassword
 });
 
 // Create HTTP server

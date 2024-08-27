@@ -22,8 +22,8 @@ const PunchOutCard = require('./cards/punchout');
     globalThis.fetch = fetch;
 
     const adapter = new BotFrameworkAdapter({
-        appId: process.env.MicrosoftAppId,
-        appPassword: process.env.MicrosoftAppPassword
+        appId: 'f0abc9ea-46c5-48fa-9d78-07ef6e468e15',
+        appPassword: 'RRn8Q~aAiahjHjQ86uiQo3-D6cgq65nfmIoPibSn'
     });
 
     const server = restify.createServer();
@@ -33,26 +33,31 @@ const PunchOutCard = require('./cards/punchout');
 
 
     const userSelections = {};
-
     server.post('/api/messages', async (req, res) => {
         await adapter.processActivity(req, res, async (context) => {
             if (context.activity.type === 'message') {
                 const userId = context.activity.from.id;
                 const aadObjectId = context.activity.from.aadObjectId;
                 await context.sendActivity('Welcome to Punch BOT');
+    
                 if (aadObjectId) {
                     try {
                         const user = await getUserByAadObjectId(aadObjectId);
+                        await context.sendActivity('2');
                         if (user) {
                             const authResponse = await callAuthAPI(userId, user.mail);
                             if (authResponse) {
+                                await context.sendActivity('3');
                                 const accessToken = authResponse.accessToken;
                                 const decodedToken = authResponse.decodedToken;
                                 const punchStatus = await callPunchStatusAPI(decodedToken.userId, accessToken);
+                                
+                                // Handle different cases based on user input
                                 if (context.activity.text === 'punch in') {
+                                    await context.sendActivity('4');
                                     console.log(punchStatus);
                                     userSelections[userId] = { initiated: true };
-
+    
                                     if (punchStatus && punchStatus.data === "OUT") {
                                         const projectsResponse = await fetchProjects(accessToken);
     
@@ -105,15 +110,15 @@ const PunchOutCard = require('./cards/punchout');
                                     } else {
                                         await context.sendActivity('Please start the process by typing "punch in" before submitting a task.');
                                     }
-                                }else if (context.activity.text === 'punch out') {
-                                    if(punchStatus && punchStatus.data === "IN") {
+                                } else if (context.activity.text === 'punch out') {
+                                    if (punchStatus && punchStatus.data === "IN") {
                                         try {
-                                            const punchOutResponses = await callPunchOutResponse(accessToken,decodedToken.userId);
+                                            const punchOutResponses = await callPunchOutResponse(accessToken, decodedToken.userId);
                                             
                                             if (punchOutResponses.ok) {
                                                 const punchOutData = await punchOutResponses.json();
                                                 console.log('Punch Out Data:', punchOutData);
-
+    
                                                 const outCard = PunchOutCard(punchOutData);
                                                 await context.sendActivity({ attachments: [CardFactory.adaptiveCard(outCard)] });
                                             } else {
@@ -121,28 +126,22 @@ const PunchOutCard = require('./cards/punchout');
                                             }
                                         } catch (error) {
                                             console.error('Punch Out Error:', error);
-                                            await context.sendActivity('An error occurred while trying to punch out. Please try again later.');
+                                            await context.sendActivity(`An error occurred while trying to punch out. Error details: ${error.message || error.toString()}`);
                                         }
-                                    }  else {
+                                    } else {
                                         await context.sendActivity('You are already punched in.');
                                     }
-                                    
-                                }
-                                
-                                else if (context.activity.value && context.activity.value.action === 'confirmPunchOut') {
+                                } else if (context.activity.value && context.activity.value.action === 'confirmPunchOut') {
                                     const punchOutData = context.activity.value.punchOutData;
                                     console.log(punchOutData);
-
-                                    const punchOutResponse = await callPunchOutAPI( accessToken, punchOutData);
+    
+                                    const punchOutResponse = await callPunchOutAPI(accessToken, punchOutData);
                                     if (punchOutResponse) {
                                         await context.sendActivity(`Successfully punched Out`);
                                     } else {
                                         await context.sendActivity('Failed to punch out.');
                                     }
-
-                                }
-                                
-                                else if (context.activity.value && context.activity.value.action === 'cancelPunchOut') {
+                                } else if (context.activity.value && context.activity.value.action === 'cancelPunchOut') {
                                     await context.sendActivity('Punch-out process canceled.');
                                 }
                             } else {
@@ -153,10 +152,7 @@ const PunchOutCard = require('./cards/punchout');
                         }
                     } catch (error) {
                         console.error('Error:', error);
-                        // await context.sendActivity('An error occurred while processing your request. Please try again later.',error);
                         const errorMessage = `An error occurred while processing your request. Error details: ${error.message || error.toString()}`;
-
-                        // Send the formatted error message
                         await context.sendActivity(errorMessage);
                     }
                 } else {
@@ -166,6 +162,6 @@ const PunchOutCard = require('./cards/punchout');
                 await context.sendActivity('Unhandled activity type.');
             }
         });
-    });
+    });    
 
 })();

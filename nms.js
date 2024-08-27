@@ -1,5 +1,5 @@
 const { Client } = require('@microsoft/microsoft-graph-client');
-const { DefaultAzureCredential } = require('@azure/identity');
+const { ManagedIdentityCredential } = require('@azure/identity');
 const jwt = require('jsonwebtoken');
 const fetch = require('node-fetch');
 const globalThis = require('globalthis')();
@@ -7,7 +7,7 @@ globalThis.fetch = fetch;
 
 const base_url = 'http://13.200.132.41:7070/api/v1/';
 
-const credential = new DefaultAzureCredential();
+const credential = new ManagedIdentityCredential();
 const client = Client.initWithMiddleware({
     authProvider: {
         getAccessToken: async () => {

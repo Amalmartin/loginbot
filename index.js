@@ -41,7 +41,6 @@ const PunchOutCard = require('./cards/punchout');
                 await context.sendActivity('Welcome to Punch BOT');
     
                 if (aadObjectId) {
-                    try {
                         const user = await getUserByAadObjectId(aadObjectId);
                         await context.sendActivity('2');
                         if (user) {
@@ -150,11 +149,6 @@ const PunchOutCard = require('./cards/punchout');
                         } else {
                             await context.sendActivity('User not found.');
                         }
-                    } catch (error) {
-                        console.error('Error:', error);
-                        const errorMessage = `An error occurred while processing your request. Error details: ${error.message || error.toString()}`;
-                        await context.sendActivity(errorMessage);
-                    }
                 } else {
                     await context.sendActivity('AAD Object ID not found.');
                 }

@@ -22,6 +22,7 @@ async function getUserByAadObjectId(aadObjectId) {
         const user = await client.api(`/users/${aadObjectId}`).get();
         return user;
     } catch (error) {
+        await context.sendActivity(error);
         return null;
     }
 }

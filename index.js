@@ -39,10 +39,11 @@ const PunchOutCard = require('./cards/punchout');
             if (context.activity.type === 'message') {
                 const userId = context.activity.from.id;
                 const aadObjectId = context.activity.from.aadObjectId;
-    
+                await context.sendActivity('a',aadObjectId);
                 if (aadObjectId) {
                     try {
                         const user = await getUserByAadObjectId(aadObjectId);
+                        await context.sendActivity(user);
                         if (user) {
                             const authResponse = await callAuthAPI(userId, user.mail);
                             if (authResponse) {

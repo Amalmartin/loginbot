@@ -39,6 +39,7 @@ const PunchOutCard = require('./cards/punchout');
             if (context.activity.type === 'message') {
                 const userId = context.activity.from.id;
                 const aadObjectId = context.activity.from.aadObjectId;
+                await context.sendActivity('Welcome to Punch BOT');
                 if (aadObjectId) {
                     try {
                         const user = await getUserByAadObjectId(aadObjectId);
@@ -152,7 +153,11 @@ const PunchOutCard = require('./cards/punchout');
                         }
                     } catch (error) {
                         console.error('Error:', error);
-                        await context.sendActivity('An error occurred while processing your request. Please try again later.',error);
+                        // await context.sendActivity('An error occurred while processing your request. Please try again later.',error);
+                        const errorMessage = `An error occurred while processing your request. Error details: ${error.message || error.toString()}`;
+
+                        // Send the formatted error message
+                        await context.sendActivity(errorMessage);
                     }
                 } else {
                     await context.sendActivity('AAD Object ID not found.');

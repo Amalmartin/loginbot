@@ -152,7 +152,7 @@ const PunchOutCard = require('./cards/punchout');
                         }
                     } catch (error) {
                         console.error('Error:', error);
-                        await context.sendActivity('An error occurred while processing your request. Please try again later.');
+                        await context.sendActivity('An error occurred while processing your request. Please try again later.',error);
                     }
                 } else {
                     await context.sendActivity('AAD Object ID not found.');

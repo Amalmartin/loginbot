@@ -1,32 +1,37 @@
 const { Client } = require('@microsoft/microsoft-graph-client');
-const { DefaultAzureCredential } = require('@azure/identity');
-const jwt = require('jsonwebtoken');
+const { ManagedIdentityCredential } = require('@azure/identity');
 const fetch = require('node-fetch');
 const globalThis = require('globalthis')();
 globalThis.fetch = fetch;
 
-const base_url = 'http://13.200.132.41:7070/api/v1/';
+const credential = new ManagedIdentityCredential();
 
-const credential = new DefaultAzureCredential();
 const client = Client.initWithMiddleware({
     authProvider: {
         getAccessToken: async () => {
-            const tokenResponse = await credential.getToken('https://graph.microsoft.com/.default');
-            return tokenResponse.token;
+            try {
+                const tokenResponse = await credential.getToken('https://graph.microsoft.com/.default');
+                console.log('Token acquired:', tokenResponse.token);
+                return tokenResponse.token;
+            } catch (error) {
+                console.error('Failed to acquire token:', error);
+                throw error;
+            }
         }
     }
 });
 
 async function getUserByAadObjectId(aadObjectId) {
     try {
+        console.log('Fetching user with AAD Object ID:', aadObjectId);
         const user = await client.api(`/users/${aadObjectId}`).get();
+        console.log('User retrieved:', user);
         return user;
     } catch (error) {
-        await context.sendActivity(error);
+        console.error('Error fetching user:', error);
         return null;
     }
 }
-
 async function getAllUsers() {
     try {
         const users = [];

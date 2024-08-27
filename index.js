@@ -1,134 +1,349 @@
-// const path = require('path');
-
-// const dotenv = require('dotenv');
-// // Import required bot configuration.
-// const ENV_FILE = path.join(__dirname, '.env');
-// dotenv.config({ path: ENV_FILE });
-
-// const restify = require('restify');
-
-// // Import required bot services.
-// // See https://aka.ms/bot-services to learn more about the different parts of a bot.
-// const {
-//     CloudAdapter,
-//     ConfigurationServiceClientCredentialFactory,
-//     createBotFrameworkAuthenticationFromConfiguration
-// } = require('botbuilder');
-
-// // This bot's main dialog.
-// const { EchoBot } = require('./bot');
-
-// // Create HTTP server
-// const server = restify.createServer();
-// server.use(restify.plugins.bodyParser());
-
-// server.listen(process.env.port || process.env.PORT || 3978, () => {
-//     console.log(`\n${ server.name } listening to ${ server.url }`);
-//     console.log('\nGet Bot Framework Emulator: https://aka.ms/botframework-emulator');
-//     console.log('\nTo talk to your bot, open the emulator select "Open Bot"');
-// });
-
-// const credentialsFactory = new ConfigurationServiceClientCredentialFactory({
-//     MicrosoftAppId: process.env.MicrosoftAppId,
-//     MicrosoftAppPassword: process.env.MicrosoftAppPassword,
-//     MicrosoftAppType: process.env.MicrosoftAppType,
-//     MicrosoftAppTenantId: process.env.MicrosoftAppTenantId
-// });
-
-// const botFrameworkAuthentication = createBotFrameworkAuthenticationFromConfiguration(null, credentialsFactory);
-
-// // Create adapter.
-// // See https://aka.ms/about-bot-adapter to learn more about adapters.
-// const adapter = new CloudAdapter(botFrameworkAuthentication);
-
-// // Catch-all for errors.
-// const onTurnErrorHandler = async (context, error) => {
-//     // This check writes out errors to console log .vs. app insights.
-//     // NOTE: In production environment, you should consider logging this to Azure
-//     //       application insights.
-//     console.error(`\n [onTurnError] unhandled error: ${ error }`);
-
-//     // Send a trace activity, which will be displayed in Bot Framework Emulator
-//     await context.sendTraceActivity(
-//         'OnTurnError Trace',
-//         `${ error }`,
-//         'https://www.botframework.com/schemas/error',
-//         'TurnError'
-//     );
-
-//     // Send a message to the user
-//     await context.sendActivity('The bot encountered an error or bug.');
-//     await context.sendActivity('To continue to run this bot, please fix the bot source code.');
-// };
-
-// // Set the onTurnError for the singleton CloudAdapter.
-// adapter.onTurnError = onTurnErrorHandler;
-
-// // Create the main dialog.
-// const myBot = new EchoBot();
-
-// // Listen for incoming requests.
-// server.post('/api/messages', async (req, res) => {
-//     // Route received a request to adapter for processing
-//     await adapter.process(req, res, (context) => myBot.run(context));
-// });
-
-// // Listen for Upgrade requests for Streaming.
-// server.on('upgrade', async (req, socket, head) => {
-//     // Create an adapter scoped to this WebSocket connection to allow storing session data.
-//     const streamingAdapter = new CloudAdapter(botFrameworkAuthentication);
-
-//     // Set onTurnError for the CloudAdapter created for each connection.
-//     streamingAdapter.onTurnError = onTurnErrorHandler;
-
-//     await streamingAdapter.process(req, socket, head, (context) => myBot.run(context));
-// });
-
-
-const path = require('path');
 const restify = require('restify');
-const { BotFrameworkAdapter } = require('botbuilder');
+const { BotFrameworkAdapter, CardFactory} = require('botbuilder');
 
-// Create adapter
-const adapter = new BotFrameworkAdapter({
-    appId: process.env.MicrosoftAppId,
-    appPassword: process.env.MicrosoftAppPassword
-});
+const {
+    getUserByAadObjectId,
+    callAuthAPI,
+    callPunchStatusAPI,
+    callPunchInAPI,
+    callPunchOutResponse,
+    callPunchOutAPI,
+    fetchProjects
+} = require('./nms');
 
-// Create HTTP server
-const server = restify.createServer();
-server.listen(process.env.port || process.env.PORT || 3978, function() {
-    console.log(`\n${server.name} listening to ${server.url}`);
-});
+const workModeSelectionCard = require('./cards/punchlocation');
+const  projectSelectionCard= require('./cards/worklocation');
+const taskInputCard = require('./cards/taskinput');
+const PunchOutCard = require('./cards/punchout');
 
-// In-memory storage for punch-in data (for demonstration purposes)
-const punchInData = {};
+(async () => {
+    const fetch = (await import('node-fetch')).default;
 
-// Listen for incoming requests
-server.post('/api/messages', async (req, res) => {
-    await adapter.processActivity(req, res, async (context) => {
-        if (context.activity.type === 'message') {
-            const userId = context.activity.from.id;
-            const text = context.activity.text.trim().toLowerCase();
+    globalThis.fetch = fetch;
 
-            if (text === 'punch in') {
-                const timestamp = new Date().toISOString();
-                const punchId = `${userId}-${Date.now()}`;
-                punchInData[punchId] = { userId, punchInTime: timestamp, punchOutTime: null };
-                await context.sendActivity(`You have punched in at ${timestamp}. Your punch ID is ${punchId}.`);
-            } else if (text.startsWith('punch out')) {
-                const punchId = text.split(' ')[2];
-                const timestamp = new Date().toISOString();
+    const adapter = new BotFrameworkAdapter({
+        appId: process.env.MicrosoftAppId,
+        appPassword: process.env.MicrosoftAppPassword
+    });
 
-                if (punchInData[punchId] && punchInData[punchId].userId === userId) {
-                    punchInData[punchId].punchOutTime = timestamp;
-                    await context.sendActivity(`You have punched out at ${timestamp}.`);
+    const server = restify.createServer();
+    server.listen(process.env.port || process.env.PORT || 3978, function () {
+        console.log(`\n${server.name} listening to ${server.url}`);
+    });
+
+
+    const userSelections = {};
+
+    server.post('/api/messages', async (req, res) => {
+        await adapter.processActivity(req, res, async (context) => {
+            if (context.activity.type === 'message') {
+                const userId = context.activity.from.id;
+                const aadObjectId = context.activity.from.aadObjectId;
+    
+                if (aadObjectId) {
+                    try {
+                        const user = await getUserByAadObjectId(aadObjectId);
+                        if (user) {
+                            const authResponse = await callAuthAPI(userId, user.mail);
+                            if (authResponse) {
+                                const accessToken = authResponse.accessToken;
+                                const decodedToken = authResponse.decodedToken;
+                                const punchStatus = await callPunchStatusAPI(decodedToken.userId, accessToken);
+                                if (context.activity.text === 'punch in') {
+                                    console.log(punchStatus);
+                                    userSelections[userId] = { initiated: true };
+
+                                    if (punchStatus && punchStatus.data === "OUT") {
+                                        const projectsResponse = await fetchProjects(accessToken);
+    
+                                        if (projectsResponse.ok) {
+                                            const projectsData = await projectsResponse.json();
+                                            if (projectsData.status === 200 && projectsData.data.length > 0) {
+                                                const card = projectSelectionCard(projectsData.data);
+                                                await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
+                                            } else {
+                                                await context.sendActivity('No projects available to punch in.');
+                                            }
+                                        } else {
+                                            await context.sendActivity('Failed to fetch projects. Please try again later.');
+                                        }
+                                    } else {
+                                        await context.sendActivity('You are already punched in.');
+                                    }
+                                } else if (context.activity.value && context.activity.value.action === 'selectProject') {
+                                    if (userSelections[userId]?.initiated) {
+                                        const selectedProjectCode = context.activity.value.projectCode;
+                                        const workModeCard = workModeSelectionCard(selectedProjectCode);
+                                        await context.sendActivity({ attachments: [CardFactory.adaptiveCard(workModeCard)] });
+                                    } else {
+                                        await context.sendActivity('Please start the process by typing "punch in" before selecting a project.');
+                                    }
+                                } else if (context.activity.value && context.activity.value.action === 'selectWorkMode') {
+                                    if (userSelections[userId]?.initiated) {
+                                        const selectedWorkMode = context.activity.value.workMode;
+                                        const projectCode = context.activity.value.projectCode;
+    
+                                        // Show task input card
+                                        const taskCard = taskInputCard(projectCode, selectedWorkMode);
+                                        await context.sendActivity({ attachments: [CardFactory.adaptiveCard(taskCard)] });
+                                    } else {
+                                        await context.sendActivity('Please start the process by typing "punch in" before selecting a work mode.');
+                                    }
+                                } else if (context.activity.value && context.activity.value.action === 'submitTask') {
+                                    if (userSelections[userId]?.initiated) {
+                                        const task = context.activity.value.task;
+                                        const projectCode = context.activity.value.projectCode;
+                                        const selectedWorkMode = context.activity.value.selectedWorkMode;
+    
+                                        const punchInResponse = await callPunchInAPI(decodedToken.userId, accessToken, projectCode, selectedWorkMode, task);
+                                        if (punchInResponse) {
+                                            await context.sendActivity(`You have successfully Punched In`);
+                                        } else {
+                                            await context.sendActivity('Failed to punch in.');
+                                        }
+                                        userSelections[userId] = { initiated: false };
+                                    } else {
+                                        await context.sendActivity('Please start the process by typing "punch in" before submitting a task.');
+                                    }
+                                }else if (context.activity.text === 'punch out' && punchStatus && punchStatus.data === "IN") {
+                                    try {
+                                        const punchOutResponses = await callPunchOutResponse(accessToken,decodedToken.userId);
+                                        
+                                        if (punchOutResponses.ok) {
+                                            const punchOutData = await punchOutResponses.json();
+                                            console.log('Punch Out Data:', punchOutData);
+
+                                            const outCard = PunchOutCard(punchOutData);
+                                            await context.sendActivity({ attachments: [CardFactory.adaptiveCard(outCard)] });
+                                        } else {
+                                            await context.sendActivity('Failed to retrieve punch-out information. Please try again later.');
+                                        }
+                                    } catch (error) {
+                                        console.error('Punch Out Error:', error);
+                                        await context.sendActivity('An error occurred while trying to punch out. Please try again later.');
+                                    }
+                                }
+                                
+                                else if (context.activity.value && context.activity.value.action === 'confirmPunchOut') {
+                                    const punchOutData = context.activity.value.punchOutData;
+                                    console.log(punchOutData);
+
+                                    const punchOutResponse = await callPunchOutAPI( accessToken, punchOutData);
+                                    if (punchOutResponse) {
+                                        await context.sendActivity(`Successfully punched Out`);
+                                    } else {
+                                        await context.sendActivity('Failed to punch out.');
+                                    }
+
+                                }
+                                
+                                else if (context.activity.value && context.activity.value.action === 'cancelPunchOut') {
+                                    await context.sendActivity('Punch-out process canceled.');
+                                }
+                            } else {
+                                await context.sendActivity('Authentication failed. Unable to call external API.');
+                            }
+                        } else {
+                            await context.sendActivity('User not found.');
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        await context.sendActivity('An error occurred while processing your request. Please try again later.');
+                    }
                 } else {
-                    await context.sendActivity('Invalid punch ID or you are not authorized to punch out this ID.');
+                    await context.sendActivity('AAD Object ID not found.');
                 }
             } else {
-                await context.sendActivity('Please type "punch in" to punch in or "punch out <punch_id>" to punch out.');
+                await context.sendActivity('Unhandled activity type.');
             }
-        }
+        });
     });
-});
+
+})();
+
+
+
+
+
+
+
+
+
+
+
+
+// const path = require('path');
+// const restify = require('restify');
+// const { BotFrameworkAdapter, CardFactory, MessageFactory } = require('botbuilder');
+
+// // Import external API functions
+// const {
+//     login,
+//     getUserByAadObjectId,
+//     getAllUsers,
+//     callAuthAPI,
+//     callPunchStatusAPI,
+//     callPunchInAPI
+// } = require('./nms');
+// const { log } = require('console');
+
+// (async () => {
+//     // Dynamic import for node-fetch
+//     const fetch = (await import('node-fetch')).default;
+
+//     // Set the global fetch polyfill
+//     globalThis.fetch = fetch;
+
+//     // Create adapter
+//     const adapter = new BotFrameworkAdapter({
+//         appId: 'f0abc9ea-46c5-48fa-9d78-07ef6e468e15',
+//         appPassword: 'RRn8Q~aAiahjHjQ86uiQo3-D6cgq65nfmIoPibSn'
+//     });
+
+//     // Create HTTP server
+//     const server = restify.createServer();
+//     server.listen(process.env.port || process.env.PORT || 3978, function () {
+//         console.log(`\n${server.name} listening to ${server.url}`);
+//     });
+
+//     server.post('/api/messages', async (req, res) => {
+//         await adapter.processActivity(req, res, async (context) => {
+//             if (context.activity.type === 'message') {
+//                 const userId = context.activity.from.id;
+//                 const userName = context.activity.from.name;
+//                 const aadObjectId = context.activity.from.aadObjectId;
+//                 // const text = context.activity.text.trim().toLowerCase();
+//                 let selectedProjectCode;
+    
+//                 if (aadObjectId) {
+//                     try {
+//                         const user = await getUserByAadObjectId(aadObjectId);
+//                         if (user) {
+//                             console.log(`User Email: ${user.mail}`);
+//                             await context.sendActivity(`User ID: ${userId}\nEmail: ${user.mail}`);
+    
+//                             const authResponse = await callAuthAPI(userId, user.mail);
+//                             if (authResponse) {
+//                                 console.log('Auth API call successful:', authResponse);
+//                                 const accessToken = authResponse.accessToken;
+//                                 const decodedToken = authResponse.decodedToken;
+    
+//                                 if (context.activity.text === 'punch in') {
+//                                     const punchStatus = await callPunchStatusAPI(decodedToken.userId, accessToken);
+//                                     console.log("Punch Status Response:", punchStatus);
+    
+//                                     if (punchStatus && punchStatus.data === "OUT") {
+//                                         console.log("Fetching Projects");
+//                                         const projectsResponse = await fetch('http://13.200.132.41:7070/api/v1/project/getAll', {
+//                                             method: 'GET',
+//                                             headers: {
+//                                                 'Accept': 'application/json',
+//                                                 'Authorization': `Bearer ${accessToken}`,
+//                                                 'org-id': 'nintriva',
+//                                                 'unit-id': 'default'
+//                                             }
+//                                         });
+    
+//                                         if (projectsResponse.ok) {
+//                                             const projectsData = await projectsResponse.json();
+//                                             console.log('Projects Data:', projectsData);
+    
+//                                             if (projectsData.status === 200 && projectsData.data.length > 0) {
+//                                                 const buttons = projectsData.data.map(project => ({
+//                                                     type: 'imBack',
+//                                                     title: project.projectName,
+//                                                     value: `select_project_${project.projectCode}`
+//                                                 }));
+    
+//                                                 const card = CardFactory.heroCard(
+//                                                     'Please select a project:',
+//                                                     undefined,
+//                                                     buttons
+//                                                 );
+    
+//                                                 await context.sendActivity({ attachments: [card] });
+//                                             } else {
+//                                                 await context.sendActivity('No projects available to punch in.');
+//                                             }
+//                                         } else {
+//                                             await context.sendActivity('Failed to fetch projects. Please try again later.');
+//                                         }
+//                                     } else {
+//                                         await context.sendActivity('You are already punched in.');
+//                                     }
+//                                 } else if (context.activity.text === 'punch status') {
+//                                     const punchStatus = await callPunchStatusAPI(decodedToken.userId, accessToken);
+//                                     await context.sendActivity(`Punch Status: ${punchStatus.data}`);
+//                                 } else if (context.activity.text.startsWith('select_project_')) {
+//                                     // Store the selected project code and prompt for work mode
+//                                     selectedProjectCode = context.activity.text.replace('select_project_', '');
+//                                     console.log(`Selected Project Code: ${selectedProjectCode}`);
+    
+//                                     const workModeButtons = [
+//                                         { type: 'imBack', title: 'WFO', value: `work_mode_WFO_${selectedProjectCode}` },
+//                                         { type: 'imBack', title: 'WFH', value: `work_mode_WFH_${selectedProjectCode}` },
+//                                         { type: 'imBack', title: 'On-site', value: `work_mode_On-site_${selectedProjectCode}` },
+//                                         { type: 'imBack', title: 'HYBRID', value: `work_mode_HYBRID_${selectedProjectCode}` }
+//                                     ];
+    
+//                                     const workModeCard = CardFactory.heroCard(
+//                                         'Please select your work mode:',
+//                                         undefined,
+//                                         workModeButtons
+//                                     );
+    
+//                                     await context.sendActivity({ attachments: [workModeCard] });
+//                                 }else if (context.activity.text.startsWith('work_mode_')) {
+//                                     const messageParts = context.activity.text.split('_');
+//                                     console.log(messageParts);
+//                                     const selectedWorkMode = messageParts[2];
+//                                     const projectCode = messageParts[3];
+//                                     console.log(`Selected Work Mode: ${selectedWorkMode}`);
+//                                     console.log(`Selected Project Code: ${projectCode}`);
+                                    
+//                                     // Map the work mode to the corresponding punch location
+//                                     const workModeMapping = {
+//                                         'WFO': 'OFFICE',
+//                                         'WFH': 'WORKFROMHOME',
+//                                         'On-site': 'ONSITE',
+//                                         'HYBRID': 'HYBRID'
+//                                     };
+                                    
+//                                     const punchLocation = workModeMapping[selectedWorkMode];
+//                                     console.log(`Selected punchLocation: ${punchLocation}`);
+                                    
+//                                     if (punchLocation && projectCode) {
+//                                         // Call the punch-in API with the selected project code and work mode
+//                                         const punchInResponse = await callPunchInAPI(decodedToken.userId, accessToken, projectCode, punchLocation);
+//                                         if (punchInResponse) {
+//                                             await context.sendActivity(`Successfully punched in to project ${projectCode} with work mode ${selectedWorkMode}.\nDetails: ${JSON.stringify(punchInResponse.data)}`);
+//                                         } else {
+//                                             await context.sendActivity('Failed to punch in.');
+//                                         }
+//                                     } else {
+//                                         await context.sendActivity('Invalid work mode or project code.');
+//                                     }
+//                                 }else {
+//                                     await context.sendActivity('Unhandled message received.');
+//                                 }
+//                             } else {
+//                                 await context.sendActivity('Authentication failed. Unable to call external API.');
+//                             }
+//                         } else {
+//                             await context.sendActivity('User not found.');
+//                         }
+//                     } catch (error) {
+//                         console.error('Error:', error);
+//                         await context.sendActivity('An error occurred while processing your request. Please try again later.');
+//                     }
+//                 } else {
+//                     await context.sendActivity('AAD Object ID not found.');
+//                 }
+//             } else {
+//                 await context.sendActivity('Unhandled activity type.');
+//             }
+//         });
+//     });
+
+// })();
+

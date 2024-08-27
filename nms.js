@@ -18,13 +18,20 @@ const client = Client.initWithMiddleware({
     }
 });
 
-async function getUserByAadObjectId(aadObjectId) {
+async function getUserByAadObjectId(aadObjectId, context) {
     try {
+        // Fetch user details
         const user = await client.api(`/users/${aadObjectId}`).get();
-        return user;
+        
+        // Send user details to bot chat
+        await context.sendActivity(`Fetched user details: ${JSON.stringify(user)}`);
+
+        // Send client configuration details to bot chat
+        await context.sendActivity(`Client Configuration: ${JSON.stringify(client.config, null, 2)}`);
+        
     } catch (error) {
-        await context.sendActivity(error);
-        return null;
+        // Send error message to bot chat
+        await context.sendActivity(`Error fetching user: ${error.message}`);
     }
 }
 

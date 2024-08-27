@@ -22,8 +22,8 @@ const PunchOutCard = require('./cards/punchout');
     globalThis.fetch = fetch;
 
     const adapter = new BotFrameworkAdapter({
-        appId: 'f0abc9ea-46c5-48fa-9d78-07ef6e468e15',
-        appPassword: 'RRn8Q~aAiahjHjQ86uiQo3-D6cgq65nfmIoPibSn'
+        appId: process.env.MicrosoftAppId,
+        appPassword: process.env.MicrosoftAppPassword
     });
 
     const server = restify.createServer();

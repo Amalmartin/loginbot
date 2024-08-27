@@ -1,6 +1,8 @@
 const restify = require('restify');
 const { BotFrameworkAdapter, CardFactory } = require('botbuilder');
 
+require('dotenv').config();
+
 const {
     getUserByAadObjectId,
     callAuthAPI,

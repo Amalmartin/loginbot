@@ -50,7 +50,8 @@ async function getUserByAadObjectId(context) {
     if (aadObjectId) {
         const email = await getUserEmail(client, aadObjectId);
         if (email) {
-            await context.sendActivity(`Your email address is: ${email}`);
+            return email;
+            // await context.sendActivity(`Your email address is: ${email}`);
         } else {
             await context.sendActivity(`Sorry, I couldn't fetch your email address.`);
         }

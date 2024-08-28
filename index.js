@@ -48,14 +48,11 @@ const PunchOutCard = require('./cards/punchout');
                 await context.sendActivity('Welcome to Punch BOT');
 
                 if (aadObjectId) {
-                    await context.sendActivity('AAD Object ID found, retrieving user...');
-                    const user = await getUserByAadObjectId(context);
-                    console.log('abc',user);
-                    if (user) {
-                        await context.sendActivity('User found, calling auth API...');
-                        const authResponse = await callAuthAPI(userId, user.mail);
+                    const email = await getUserByAadObjectId(context);
+                    console.log('abc',email);
+                    if (email) {
+                        const authResponse = await callAuthAPI(userId, email);
                         if (authResponse) {
-                            await context.sendActivity('Authenticated successfully.');
                             const accessToken = authResponse.accessToken;
                             const decodedToken = authResponse.decodedToken;
                             const punchStatus = await callPunchStatusAPI(decodedToken.userId, accessToken);
@@ -69,7 +66,6 @@ const PunchOutCard = require('./cards/punchout');
                                     const projectsResponse = await fetchProjects(accessToken);
 
                                     if (projectsResponse.ok) {
-                                        await context.sendActivity('Projects fetched successfully.');
                                         const projectsData = await projectsResponse.json();
                                         if (projectsData.status === 200 && projectsData.data.length > 0) {
                                             const card = projectSelectionCard(projectsData.data);
@@ -128,7 +124,6 @@ const PunchOutCard = require('./cards/punchout');
                                         const punchOutResponses = await callPunchOutResponse(accessToken, decodedToken.userId);
 
                                         if (punchOutResponses.ok) {
-                                            await context.sendActivity('Punch out data fetched successfully.');
                                             const punchOutData = await punchOutResponses.json();
 
                                             const outCard = PunchOutCard(punchOutData);
@@ -163,7 +158,7 @@ const PunchOutCard = require('./cards/punchout');
                         await context.sendActivity('User not found.');
                     }
                 } else {
-                    await context.sendActivity('AAD Object ID not found.');
+                    await context.sendActivity('User is not found.');
                 }
             } else {
                 await context.sendActivity('Unhandled activity type.');

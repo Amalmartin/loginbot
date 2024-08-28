@@ -39,17 +39,10 @@ const PunchOutCard = require('./cards/punchout');
             if (context.activity.type === 'message') {
                 const userId = context.activity.from.id;
                 const aadObjectId = context.activity.from.aadObjectId;
-                await context.sendActivity(aadObjectId);
 
-                const userEmail = context.activity.from;
-
-                // console.log(userEmail);
-                // await context.sendActivity(userEmail);
                 await context.sendActivity('Welcome to Punch BOT');
-
                 if (aadObjectId) {
                     const email = await getUserByAadObjectId(context);
-                    console.log('abc',email);
                     if (email) {
                         const authResponse = await callAuthAPI(userId, email);
                         if (authResponse) {

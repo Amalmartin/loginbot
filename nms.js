@@ -9,6 +9,8 @@ const { TokenCredentialAuthenticationProvider } = require('@microsoft/microsoft-
 const { ClientSecretCredential } = require('@azure/identity');
 require('dotenv').config();
 
+const base_url = 'http://13.200.132.41:7070/api/v1/';
+
 async function main() {
     const tenantId = process.env.MicrosoftAppTenantId;
     const clientId = process.env.MicrosoftAppId;
@@ -35,7 +37,6 @@ async function main() {
 async function getUserEmail(client, aadObjectId) {
     try {
         const user = await client.api(`/users/${aadObjectId}`).get();
-        console.log(`User data: ${JSON.stringify(user)}`);
         return user.mail; // Get the user's email
     } catch (error) {
         console.error(`Error fetching user email: ${error.message}`);

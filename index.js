@@ -40,7 +40,6 @@ const PunchOutCard = require('./cards/punchout');
                 const userId = context.activity.from.id;
                 const aadObjectId = context.activity.from.aadObjectId;
 
-                await context.sendActivity('Welcome to Punch BOT');
                 if (aadObjectId) {
                     const email = await getUserByAadObjectId(context);
                     // await context.sendActivity(userId);
@@ -54,6 +53,7 @@ const PunchOutCard = require('./cards/punchout');
                             const punchStatus = await callPunchStatusAPI(decodedToken.userId, accessToken);
 
                             if (context.activity.text === 'punch in') {
+                                await context.sendActivity('Welcome to Punch BOT');
                                 await context.sendActivity('Processing punch in...');
                                 userSelections[userId] = { initiated: true };
 

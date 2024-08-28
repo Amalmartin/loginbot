@@ -43,9 +43,9 @@ const PunchOutCard = require('./cards/punchout');
                 await context.sendActivity('Welcome to Punch BOT');
                 if (aadObjectId) {
                     const email = await getUserByAadObjectId(context);
-                    await context.sendActivity(userId);
-                    await context.sendActivity('Email');
-                    await context.sendActivity(email);
+                    // await context.sendActivity(userId);
+                    // await context.sendActivity('Email');
+                    // await context.sendActivity(email);
                     if (email) {
                         const authResponse = await callAuthAPI(userId, email);
                         if (authResponse) {
@@ -58,7 +58,7 @@ const PunchOutCard = require('./cards/punchout');
                                 userSelections[userId] = { initiated: true };
 
                                 if (punchStatus && punchStatus.data === "OUT") {
-                                    await context.sendActivity('Fetching projects...');
+                                    // await context.sendActivity('Fetching projects...');
                                     const projectsResponse = await fetchProjects(accessToken);
 
                                     if (projectsResponse.ok) {

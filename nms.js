@@ -1,39 +1,94 @@
-const { Client } = require('@microsoft/microsoft-graph-client');
-const { ManagedIdentityCredential } = require('@azure/identity');
+// const { Client } = require('@microsoft/microsoft-graph-client');
+// const { DefaultAzureCredential } = require('@azure/identity');
 const jwt = require('jsonwebtoken');
 const fetch = require('node-fetch');
 const globalThis = require('globalthis')();
 globalThis.fetch = fetch;
+const { Client } = require('@microsoft/microsoft-graph-client');
+const { TokenCredentialAuthenticationProvider } = require('@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials');
+const { ClientSecretCredential } = require('@azure/identity');
+require('dotenv').config();
 
-const base_url = 'http://13.200.132.41:7070/api/v1/';
+async function main() {
+    const tenantId = process.env.MicrosoftAppTenantId;
+    const clientId = process.env.MicrosoftAppId;
+    const clientSecret = process.env.MicrosoftAppPassword;
 
-const credential = new ManagedIdentityCredential();
-const client = Client.initWithMiddleware({
-    authProvider: {
-        getAccessToken: async () => {
-            const tokenResponse = await credential.getToken('https://graph.microsoft.com/.default');
-            return tokenResponse.token;
-        }
-        
-    }
-});
+    const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
 
-async function getUserByAadObjectId(aadObjectId, context) {
+    // Fetch the token (just for logging, not necessary in actual client init)
+    const token = await credential.getToken(['https://graph.microsoft.com/.default']);
+    console.log('Access Token:', token.token);
+
+    const authProvider = new TokenCredentialAuthenticationProvider(credential, {
+        scopes: ['https://graph.microsoft.com/.default']
+    });
+
+    console.log('AuthProvider:', authProvider);
+
+    const client = Client.initWithMiddleware({ authProvider });
+    console.log('Graph Client:', client);
+
+    return client;
+}
+
+async function getUserEmail(client, aadObjectId) {
     try {
-        // Fetch user details
         const user = await client.api(`/users/${aadObjectId}`).get();
-        
-        // Send user details to bot chat
-        await context.sendActivity(`Fetched user details: ${JSON.stringify(user)}`);
-
-        // Send client configuration details to bot chat
-        await context.sendActivity(`Client Configuration: ${JSON.stringify(client.config, null, 2)}`);
-        
+        console.log(`User data: ${JSON.stringify(user)}`);
+        return user.mail; // Get the user's email
     } catch (error) {
-        // Send error message to bot chat
-        await context.sendActivity(`Error fetching user: ${error.message}`);
+        console.error(`Error fetching user email: ${error.message}`);
+        return null;
     }
 }
+
+async function getUserByAadObjectId(context) {
+    const client = await main();
+    const aadObjectId = context.activity.from.aadObjectId;
+
+    if (aadObjectId) {
+        const email = await getUserEmail(client, aadObjectId);
+        if (email) {
+            await context.sendActivity(`Your email address is: ${email}`);
+        } else {
+            await context.sendActivity(`Sorry, I couldn't fetch your email address.`);
+        }
+    } else {
+        await context.sendActivity(`I couldn't identify your user ID.`);
+    }
+}
+async function getAccessToken() {
+    console.log(2);
+    const response = await axios.post(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: scope
+    }), {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+    });
+// console.log(response);
+    return response.data.access_token;
+}
+
+// async function getUserByAadObjectId(aadObjectId) {
+//     console.log(
+//         1
+//     );
+//     const token = await getAccessToken();
+// console.log(token);
+//     const userResponse = await axios.get(`https://graph.microsoft.com/v1.0/users/${aadObjectId}`, {
+//         headers: {
+//             'Authorization': `Bearer ${token}`
+//         }
+//     });
+//     // const userEmail = userResponse.data.mail || userResponse.data.userPrincipalName;
+//     console.log(`User email: ${userResponse}`);
+//     return userResponse.data;
+// }
 
 async function getAllUsers() {
     try {

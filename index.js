@@ -49,7 +49,7 @@ const PunchOutCard = require('./cards/punchout');
 
                 if (aadObjectId) {
                     await context.sendActivity('AAD Object ID found, retrieving user...');
-                    const user = await getUserByAadObjectId(aadObjectId,context);
+                    const user = await getUserByAadObjectId(context);
                     console.log('abc',user);
                     if (user) {
                         await context.sendActivity('User found, calling auth API...');
